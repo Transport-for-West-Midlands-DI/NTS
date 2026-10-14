@@ -8,6 +8,7 @@ NTS0409 (Average number of trips and distance travelled by purpose and main mode
 						- validated output against published 2023 data.
 	Owen O'Neill:   May 2025: altered region from using PSU (PSUStatsReg_B01ID) field to household field (hholdgor_b01id)
 	Owen O'Neill:	July 2025: sql performance improvements, remove large union all for lookup tables.
+	Owen O'Neill:   March 2026: fixed bug in individual count when filtered by working age - added filter by student age
 
 =================================================================================*/
 --use NTS;
@@ -15,7 +16,7 @@ NTS0409 (Average number of trips and distance travelled by purpose and main mode
 DO $$
 DECLARE
 
-_numyears constant smallint = 3; --number of years to roll up averages (backwards from date reported in result row)
+_numyears constant smallint = 10; --number of years to roll up averages (backwards from date reported in result row)
 
 _skipCovidYears constant smallint = 1; --if enabled skips 2020 + 2021 and extends year window to compensate so number of years aggregated remains the same.
 
@@ -43,9 +44,11 @@ _combineUndergroundIntoOther  constant smallint = 1; --captured data segregates 
 
 _excludeShortWalks constant smallint = 0; --table 0403a+c includes short walks, table 0403b+d excludes short walks
 
-_restrictToWorkingAge  constant smallint = 0; --restrict to 16-64 year old (inclusive) 
+_restrictToWorkingAge  constant smallint = 0; --restrict to 16-64 year old (inclusive) -only pick one of the age related filters
 --age_b01id >= 6 AND age_b01id <= 16 -- 16-64 year old (inclusive) 
 
+_restrictToStudentAge  constant smallint = 1; --restrict to 17-20 year old (inclusive) -only pick one of the age related filters 
+--age_b01id >= 7 AND age_b01id <= 10 -- 17-20 year old (inclusive)
 
 
 _dummyModeIdValue constant  float = 1.5; --walks are split to 'long' walks and all walks - we use this dummy value for the additional 'long walk' category.
@@ -743,6 +746,11 @@ WHERE
 )
 AND
 (
+ 1 != _restrictToStudentAge
+ OR (age_b01id >= 7 AND age_b01id <= 10) -- 17-20 year old (inclusive)
+)
+AND
+(
 	_excludeShortWalks != 1
 	OR T.MainMode_B11ID != 1
 )
@@ -940,6 +948,11 @@ WHERE
 (
  1 != _restrictToWorkingAge 
  OR (age_b01id >= 6 AND age_b01id <= 16) -- 16-64 year old (inclusive) 
+)
+AND
+(
+ 1 != _restrictToStudentAge
+ OR (age_b01id >= 7 AND age_b01id <= 10) -- 17-20 year old (inclusive)
 )
 AND
 (
@@ -1248,7 +1261,19 @@ on I.PSUID = P.PSUID
 left join tfwm_nts_secureschema.Household as H
 on I.HouseholdID = H.HouseholdID
  
-group by SurveyYear_B01ID, 
+WHERE
+(
+ 1 != _restrictToWorkingAge 
+ OR (age_b01id >= 6 AND age_b01id <= 16) -- 16-64 year old (inclusive) 
+)
+AND
+(
+ 1 != _restrictToStudentAge
+ OR (age_b01id >= 7 AND age_b01id <= 10) -- 17-20 year old (inclusive)
+)
+ 
+ 
+GROUP BY SurveyYear_B01ID, 
 		CASE WHEN psucountry_b01id = -10 THEN 1
  			WHEN psucountry_b01id isnull THEN 1
 			 ELSE psucountry_b01id

@@ -16,9 +16,6 @@ Since an individual may use multiple modes, the sum of this column will be large
 The stage and trip data is then further split by trip purpose and trip distance band
 
 
-
-
-
 	Owen O'Neill:	Jan 2024
 	Owen O'Neill:	June 2024 use special access schema - adapt to LA geography
     Owen O'Neill:   June 2024 add functionality to skip covid years while keeping number of active years in rollling average the same.
@@ -80,7 +77,7 @@ SELECT * FROM (VALUES
 
 
 cteIndividualJoin (individualID, householdID, 
-		yearID, countryID, statsregID, laID, ageId, sexId, ethId,
+		yearID, surveyyear, countryID, statsregID, laID, ageId, sexId, ethId,
 		householdVehicleCount,
 		HouseholdUnweightedFactor,
 		HouseholdWeightingFactor
@@ -89,6 +86,7 @@ as
 (select I.individualID,
 		I.householdID,
 		SurveyYear_B01ID, 
+ 		I.surveyyear,
 		CASE WHEN psucountry_b01id = -10 THEN 1
  			WHEN psucountry_b01id isnull THEN 1
 			 ELSE psucountry_b01id
@@ -121,14 +119,14 @@ on I.householdid = vehCount.householdid
 
 
 --count of individuals using a given mode. people use multiple modes, so the individual count will be greater than total sample size
-cteStageJoinMode (yearID, countryID, statsregID, laID, ageId, sexId, ethId,
+cteStageJoinMode (yearID, surveyyear, countryID, statsregID, laID, ageId, sexId, ethId,
 		householdVehicleCount,
 		smID,
 		
 		Individuals_using_mode_weighted
 )
 AS
-(SELECT yearID, countryID, statsregID, laID, ageId, sexId, ethId,
+(SELECT yearID, surveyyear, countryID, statsregID, laID, ageId, sexId, ethId,
 		householdVehicleCount,
 		smID,
 		
@@ -157,7 +155,7 @@ LEFT OUTER JOIN
 	) as t on t.individualID = cteIndividualJoin.individualID
 
 GROUP BY 
-	yearID, countryID, statsregID, laID, ageId, sexId, ethId,
+	yearID, surveyyear, countryID, statsregID, laID, ageId, sexId, ethId,
 	householdVehicleCount,
 	smID
 ),
@@ -171,7 +169,7 @@ GROUP BY
 --JOTXSC The overall duration of the trip (in minutes), meaning that it includes both the travelling and waiting times between stages, 
 --  grossed for short walks and excluding “Series of Calls” trips.
 cteTripJoin (tripID, individualID, householdID, 
-		yearID, countryID, statsregID, laID, ageId, sexId, ethId,
+		yearID, surveyyear, countryID, statsregID, laID, ageId, sexId, ethId,
 		householdVehicleCount,
 		HouseholdUnweightedFactor,
 		HouseholdWeightingFactor,
@@ -184,7 +182,7 @@ cteTripJoin (tripID, individualID, householdID,
 )
 as
 (select T.TripID, I.individualID, I.householdID, 
-		yearID, countryID, statsregID, laID, ageId, sexId, ethId,
+		yearID, T.surveyyear, countryID, statsregID, laID, ageId, sexId, ethId,
 		householdVehicleCount,
 		HouseholdUnweightedFactor,
 		HouseholdWeightingFactor,
@@ -243,7 +241,7 @@ LEFT JOIN cteIndividualJoin as I on T.individualID = I.individualID
 
 
 
-cteTripBase (yearID, countryID, statsregID, laID, tpID, mmID, tdID, ageId, sexId, ethId,
+cteTripBase (yearID, surveyyear, countryID, statsregID, laID, tpID, mmID, tdID, ageId, sexId, ethId,
 		householdVehicleCount,
 		Trips_unweighted,
 		Trips_weighted,
@@ -252,7 +250,7 @@ cteTripBase (yearID, countryID, statsregID, laID, tpID, mmID, tdID, ageId, sexId
 		TripTravelTime_weighted
 )
 as
-(select yearID, countryID, statsregID, laID, tpID, mmID, tdID, ageId, sexId, ethId,
+(select yearID, surveyyear, countryID, statsregID, laID, tpID, mmID, tdID, ageId, sexId, ethId,
 		householdVehicleCount,		
 		
 		sum(Trips_unweighted),
@@ -264,7 +262,7 @@ as
 from cteTripJoin T
 
 group by
-yearID, countryID, statsregID, laID, tpID, mmID, tdID, ageId, sexId, ethId, householdVehicleCount
+yearID, surveyyear, countryID, statsregID, laID, tpID, mmID, tdID, ageId, sexId, ethId, householdVehicleCount
 
 ),
 
@@ -281,7 +279,7 @@ cteStagesBase (yearID, surveyYear, countryID, statsregID, laID, tpID, ageId, sex
 as
 (
 select yearID, 
-		surveyYear,
+		S.surveyYear,
 		countryID, statsregID, laID, tpID, ageId, sexId, ethId, householdVehicleCount, 
 		
 		CASE WHEN 1 = _combineLocalBusModes and 7 = StageMode_B04ID THEN 8 --force 'london bus' to 'local bus'
@@ -306,7 +304,7 @@ LEFT JOIN cteTripJoin T ON s.TripID = t.TripID
 
 GROUP BY
 		yearID, 
-		surveyYear,
+		S.surveyYear,
 		countryID, statsregID, laID, tpID, ageId, sexId, ethId, householdVehicleCount, 
 		
 		CASE WHEN 1 = _combineLocalBusModes and 7 = StageMode_B04ID THEN 8 --force 'london bus' to 'local bus'
@@ -329,29 +327,29 @@ GROUP BY
 --W5	Trip/Stage weight (Trip)
 --W4	LDJ weight (LDJ)
 --W6	Attitudes weight(Attitudes)
-cteIndividualsBase (yearID, countryID, statsregID, laId, ageId, sexId, ethId, householdVehicleCount, 
+cteIndividualsBase (yearID, surveyyear, countryID, statsregID, laId, ageId, sexId, ethId, householdVehicleCount, 
 	Individuals_unweighted, Individuals_weighted)
 as
-(SELECT yearID, countryID, statsregID, laId, ageId, sexId, ethId, householdVehicleCount, 
+(SELECT yearID, surveyyear, countryID, statsregID, laId, ageId, sexId, ethId, householdVehicleCount, 
  	SUM(HouseholdUnweightedFactor), SUM(HouseholdWeightingFactor)
 
 FROM cteIndividualJoin I 
  
-GROUP BY yearID, countryID, statsregID, laId, ageId, sexId, ethId, householdVehicleCount 
+GROUP BY yearID, surveyyear, countryID, statsregID, laId, ageId, sexId, ethId, householdVehicleCount 
 ),
 
 
 summaryQuery as (
 	select
-		s.surveyYear, --COALESCE(s.surveyYear, t.surveyYear, jm.surveyYear) as surveyYear, 
-		COALESCE(s.yearID, t.yearID, jm.yearID) as yearID, 
-		COALESCE(s.countryID, t.countryID, jm.countryID) as countryID, 		
-		COALESCE(s.statsregID, t.statsregID, jm.statsregID) as statsregID, 
-		COALESCE(s.laID, t.laID, jm.laID) as laID, 
-		COALESCE(S.ageID, T.ageID, jm.ageID) as ageID,
-		COALESCE(S.sexID, T.sexID, jm.sexID) as sexID,
-		COALESCE(S.ethID, T.ethID, jm.ethID) as ethID,
-		COALESCE(S.householdVehicleCount, T.householdVehicleCount, jm.householdVehicleCount) as householdVehicleCount,
+		COALESCE(s.surveyYear, t.surveyYear, i.surveyYear, jm.surveyYear) as surveyYear, 
+		COALESCE(s.yearID, t.yearID, i.yearID, jm.yearID) as yearID, 
+		COALESCE(s.countryID, t.countryID, i.countryID, jm.countryID) as countryID, 		
+		COALESCE(s.statsregID, t.statsregID, i.statsregID, jm.statsregID) as statsregID, 
+		COALESCE(s.laID, t.laID, i.laid, jm.laID) as laID, 
+		COALESCE(S.ageID, T.ageID, i.ageid, jm.ageID) as ageID,
+		COALESCE(S.sexID, T.sexID, i.sexid, jm.sexID) as sexID,
+		COALESCE(S.ethID, T.ethID, i.ethid, jm.ethID) as ethID,
+		COALESCE(S.householdVehicleCount, T.householdVehicleCount, i.householdVehicleCount, jm.householdVehicleCount) as householdVehicleCount,
 		
 		COALESCE(S.smID, T.mmID, jm.smID) as mmID,
 
@@ -418,4 +416,3 @@ $$;
 select * from __temp_table;
  
 --can't drop the temp table here otherwise I don't get any output from the select statement in the pgadmin window
-
